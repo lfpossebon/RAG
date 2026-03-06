@@ -1,0 +1,686 @@
+{
+  "name": "RAG - Captura e Organização",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "406c3f3a-16e2-4a7c-abd6-0f219ae1de9f",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 240],
+      "webhookId": "rag-captura-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "7v1279k7IRa1w5Ym",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "loose"},
+                "conditions": [{"leftValue": "={{ $json.callback_query }}", "rightValue": "", "operator": {"type": "object", "operation": "exists", "singleValue": true}}],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Callback"
+            },
+            {
+              "conditions": {
+                "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "loose"},
+                "conditions": [{"leftValue": "={{ $json.message }}", "rightValue": "", "operator": {"type": "object", "operation": "exists", "singleValue": true}}],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Mensagem"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-tipo-001",
+      "name": "Tipo de Evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [144, 240]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"id": "condition-photo", "leftValue": "={{ $json.message.photo ? true : false }}", "rightValue": "", "operator": {"type": "boolean", "operation": "true", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ea9e229f-0f3d-4980-9804-4886f5aec881",
+      "name": "É uma imagem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [368, 240]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "📷 Por favor, envie uma *imagem* para eu processar e adicionar ao RAG.\n\nVocê pode incluir uma legenda para adicionar contexto.",
+        "additionalFields": {}
+      },
+      "id": "290397e3-94ee-4147-88aa-142d37fa8b57",
+      "name": "Pedir Imagem",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [592, 400],
+      "webhookId": "8686540d-af17-4ffe-9711-db3d536c017b",
+      "credentials": {
+        "telegramApi": {"id": "7v1279k7IRa1w5Ym", "name": "Telegram account"}
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "📸 Imagem recebida! Processando...\n\n⏳ Extraindo informações com Vision AI...",
+        "additionalFields": {}
+      },
+      "id": "82545a34-f08d-4d59-adf5-41f1fde926b2",
+      "name": "Confirmar Recebimento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [592, 240],
+      "webhookId": "be9fb337-3d26-40c8-9f93-3104b525285f",
+      "credentials": {
+        "telegramApi": {"id": "7v1279k7IRa1w5Ym", "name": "Telegram account"}
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $('Telegram Trigger').item.json.message.photo.slice(-1)[0].file_id }}",
+        "additionalFields": {}
+      },
+      "id": "fdc483e1-6492-425e-8ff3-eae8a23e3741",
+      "name": "Download Imagem",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [816, 240],
+      "webhookId": "0089870b-aa56-4374-abc8-840edb5c79dd",
+      "credentials": {
+        "telegramApi": {"id": "7v1279k7IRa1w5Ym", "name": "Telegram account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst triggerData = $('Telegram Trigger').first().json;\n\nconst binaryKeys = item.binary ? Object.keys(item.binary) : [];\nconst binaryKey = binaryKeys[0] || 'data';\nconst binaryData = item.binary?.[binaryKey];\n\nlet base64Image = '';\nlet mimeType = 'image/jpeg';\n\nif (binaryData) {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, binaryKey);\n  base64Image = buffer.toString('base64');\n  mimeType = binaryData.mimeType || 'image/jpeg';\n}\n\nreturn [{\n  json: {\n    chat_id: triggerData.message.chat.id,\n    user_name: triggerData.message.from.first_name || 'Usuário',\n    contexto_usuario: triggerData.message.caption || '',\n    imagem_base64: base64Image,\n    mime_type: mimeType,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "fe1df841-aea0-4a8f-93f2-2b4cf6c466a2",
+      "name": "Preparar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\": \"gpt-4o\", \"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Analise esta imagem e extraia as informacoes seguindo RIGOROSAMENTE este formato JSON:\\n\\n{\\n  \\\"tipo\\\": \\\"qualitativo\\\" | \\\"quantitativo\\\" | \\\"misto\\\",\\n  \\\"fonte\\\": \\\"nome do documento/relatorio/sistema de origem\\\",\\n  \\\"data_referencia\\\": \\\"YYYY-MM ou YYYY-MM-DD se disponivel\\\",\\n  \\\"categoria\\\": \\\"captacao\\\" | \\\"investimentos\\\" | \\\"credito\\\" | \\\"seguros\\\" | \\\"resultado\\\" | \\\"mercado\\\" | \\\"regulatorio\\\" | \\\"estrategia\\\" | \\\"outro\\\",\\n  \\\"contexto_qualitativo\\\": \\\"texto corrido com analises, contextos, explicacoes, estrategias (null se nao houver)\\\",\\n  \\\"dados_numericos\\\": [\\n    {\\n      \\\"metrica\\\": \\\"nome_da_metrica_em_snake_case\\\",\\n      \\\"area\\\": \\\"area ou segmento relacionado\\\",\\n      \\\"valor\\\": numero (sem formatacao, apenas o valor numerico),\\n      \\\"unidade\\\": \\\"reais\\\" | \\\"milhoes\\\" | \\\"bilhoes\\\" | \\\"percentual\\\" | \\\"quantidade\\\" | \\\"outro\\\",\\n      \\\"periodo\\\": \\\"YYYY-MM ou YYYY-MM-DD\\\",\\n      \\\"contexto\\\": \\\"breve contexto se relevante\\\"\\n    }\\n  ],\\n  \\\"resumo\\\": \\\"resumo executivo de 1-2 frases do conteudo\\\",\\n  \\\"texto_extraido\\\": \\\"TRANSCRICAO COMPLETA de todo o texto visivel\\\"\\n}\\n\\nREGRAS:\\n- Se o conteudo for puramente texto/analise, tipo = \\\"qualitativo\\\" e dados_numericos = []\\n- Se for tabela de numeros sem contexto narrativo, tipo = \\\"quantitativo\\\" e contexto_qualitativo = null\\n- Se tiver ambos, tipo = \\\"misto\\\" e preencha os dois campos\\n- Extraia TODOS os numeros relevantes que aparecerem\\n- Normalize valores (ex: 150 milhoes = 150000000)\\n- Use snake_case para nomes de metricas\\n- Datas sempre em formato ISO (YYYY-MM-DD ou YYYY-MM)\\n\\nContexto do usuario: {{ $json.contexto_usuario || 'Nenhum' }}\\n\\nResponda APENAS com JSON valido.\"}, {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:{{ $json.mime_type }};base64,{{ $json.imagem_base64 }}\"}}]}], \"max_tokens\": 4096}",
+        "options": {}
+      },
+      "id": "67513723-6645-471f-b0b1-694db44bc619",
+      "name": "Vision AI Extrair",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1264, 240],
+      "credentials": {
+        "openAiApi": {"id": "3XIAz6ogPLnMZXI1", "name": "OpenAi account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst visionContent = response.choices?.[0]?.message?.content || '{}';\nconst dadosAnteriores = $('Preparar Dados').first().json;\n\nlet visionData;\ntry {\n  let jsonStr = visionContent;\n  const jsonMatch = visionContent.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) jsonStr = jsonMatch[1];\n\n  const startIdx = jsonStr.indexOf('{');\n  const endIdx = jsonStr.lastIndexOf('}');\n  if (startIdx !== -1 && endIdx !== -1) {\n    jsonStr = jsonStr.substring(startIdx, endIdx + 1);\n  }\n\n  visionData = JSON.parse(jsonStr.trim());\n} catch (e) {\n  visionData = {\n    tipo: 'qualitativo',\n    fonte: 'nao identificado',\n    data_referencia: null,\n    categoria: 'outro',\n    contexto_qualitativo: visionContent,\n    dados_numericos: [],\n    resumo: '',\n    texto_extraido: visionContent\n  };\n}\n\nvisionData.tipo = visionData.tipo || 'qualitativo';\nvisionData.dados_numericos = visionData.dados_numericos || [];\nvisionData.contexto_qualitativo = visionData.contexto_qualitativo || visionData.texto_extraido || '';\n\nreturn [{\n  json: {\n    ...dadosAnteriores,\n    vision: visionData,\n    tipo_conteudo: visionData.tipo,\n    tem_dados_numericos: visionData.dados_numericos.length > 0,\n    tem_contexto_qualitativo: !!visionData.contexto_qualitativo\n  }\n}];"
+      },
+      "id": "fc0fef45-d4ce-459c-8944-7524959f7696",
+      "name": "Processar Vision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1488, 240]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [{"leftValue": "={{ $json.tipo_conteudo }}", "rightValue": "qualitativo", "operator": {"type": "string", "operation": "equals"}}],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Qualitativo"
+            },
+            {
+              "conditions": {
+                "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [{"leftValue": "={{ $json.tipo_conteudo }}", "rightValue": "quantitativo", "operator": {"type": "string", "operation": "equals"}}],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Quantitativo"
+            },
+            {
+              "conditions": {
+                "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [{"leftValue": "={{ $json.tipo_conteudo }}", "rightValue": "misto", "operator": {"type": "string", "operation": "equals"}}],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Misto"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2d281046-a0d2-40bc-8870-76102134c53b",
+      "name": "Tipo de Conteudo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1712, 240]
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/rag_metadata?select=mapa_conhecimento&order=ultima_atualizacao.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "97ead376-a6a7-4b71-9eb4-78296777365b",
+      "name": "Buscar Mapa RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1936, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dadosVision = $('Processar Vision').first().json;\nconst mapaResponse = $input.first().json;\nconst mapa = Array.isArray(mapaResponse) && mapaResponse.length > 0 \n  ? mapaResponse[0].mapa_conhecimento \n  : {};\n\nreturn [{\n  json: {\n    ...dadosVision,\n    mapa_rag: mapa\n  }\n}];"
+      },
+      "id": "3e7438d4-8572-43b3-a33c-b28c4d6d3f57",
+      "name": "Combinar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Você é um Agente Especialista em Organização de Conhecimento RAG. Analise o conteúdo extraído e sugira a melhor organização baseada no mapa de conhecimento existente. Responda APENAS com JSON válido.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(`DADOS DA IMAGEM ANALISADA:\\n${JSON.stringify($json.vision, null, 2)}\\n\\nMAPA DE CONHECIMENTO ATUAL:\\n${JSON.stringify($json.mapa_rag, null, 2)}\\n\\nCONTEXTO DO USUÁRIO: ${$json.contexto_usuario || 'Nenhum'}\\n\\nSugira a organização com este JSON:\\n{\\n  \"titulo\": \"título descritivo\",\\n  \"categoria\": \"usar categoria do mapa ou sugerir nova\",\\n  \"subcategoria\": \"subcategoria se aplicável\",\\n  \"tags\": [\"tag1\", \"tag2\"],\\n  \"resumo\": \"resumo em 2-3 frases\",\\n  \"prioridade\": \"alta|média|baixa\",\\n  \"confianca\": \"alta|média|baixa\",\\n  \"justificativa\": \"por que esta classificação\"\\n}`) }}\n    }\n  ],\n  \"max_tokens\": 1500,\n  \"temperature\": 0.3\n}",
+        "options": {}
+      },
+      "id": "21af04b0-f5e4-4f12-8c5f-7d45ece8517f",
+      "name": "Agente RAG Expert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2384, 80],
+      "credentials": {
+        "openAiApi": {"id": "3XIAz6ogPLnMZXI1", "name": "OpenAi account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst expertContent = response.choices?.[0]?.message?.content || '{}';\nconst dadosAnteriores = $('Combinar Dados').first().json;\n\nlet expertData;\ntry {\n  let jsonStr = expertContent;\n  const jsonMatch = expertContent.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) jsonStr = jsonMatch[1];\n  \n  const startIdx = jsonStr.indexOf('{');\n  const endIdx = jsonStr.lastIndexOf('}');\n  if (startIdx !== -1 && endIdx !== -1) {\n    jsonStr = jsonStr.substring(startIdx, endIdx + 1);\n  }\n  \n  expertData = JSON.parse(jsonStr.trim());\n} catch (e) {\n  expertData = {\n    titulo: 'Documento sem título',\n    categoria: 'A classificar',\n    tags: [],\n    resumo: dadosAnteriores.vision?.descricao_visual || '',\n    prioridade: 'média',\n    confianca: 'baixa',\n    justificativa: 'Erro ao processar sugestão automática'\n  };\n}\n\nconst docId = 'doc_' + Date.now();\n\nreturn [{\n  json: {\n    doc_id: docId,\n    ...dadosAnteriores,\n    sugestao: expertData\n  }\n}];"
+      },
+      "id": "360c45c4-8fd9-4d27-8a50-ecf22c4dc628",
+      "name": "Processar Sugestão",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2608, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dadosSugestao = $input.first().json;\nconst vision = dadosSugestao.vision || {};\nconst docId = dadosSugestao.doc_id;\n\nlet conteudo = vision.contexto_qualitativo || vision.texto_extraido || \"\";\n\nif (vision.tipo === \"misto\" && vision.dados_numericos?.length > 0) {\n  const metricasResumo = vision.dados_numericos.map(m =>\n    `${m.metrica}: ${m.valor} ${m.unidade} (${m.periodo})`\n  ).join(\"; \");\n  conteudo += `\\n\\nMetricas relacionadas: ${metricasResumo}`;\n}\n\nfunction formatarData(dataRef) {\n  if (!dataRef) return null;\n  if (/^\\d{4}$/.test(dataRef)) return `${dataRef}-01-01`;\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(dataRef)) return dataRef;\n  return null;\n}\n\nconst bodyObj = {\n  titulo: dadosSugestao.sugestao?.titulo || vision.resumo || vision.fonte || \"Documento capturado\",\n  conteudo: conteudo,\n  resumo: dadosSugestao.sugestao?.resumo || vision.resumo || \"\",\n  fonte: vision.fonte || \"captura_telegram\",\n  data_referencia: formatarData(vision.data_referencia),\n  categoria: dadosSugestao.sugestao?.categoria || vision.categoria || \"outro\",\n  subcategoria: dadosSugestao.sugestao?.subcategoria || null,\n  tags: dadosSugestao.sugestao?.tags || [],\n  tipo_conteudo: vision.tipo || \"qualitativo\",\n  status: \"rascunho\",\n  doc_id: docId\n};\n\nreturn [{\n  json: {\n    ...dadosSugestao,\n    bodyJson: bodyObj\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2832, 80],
+      "id": "187ef7a4-a8ca-47ca-a323-b7295a20315e",
+      "name": "Preparar Body Supabase"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/documentos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"},
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "Prefer", "value": "return=representation"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.bodyJson }}",
+        "options": {}
+      },
+      "id": "997a97ef-3a56-42ff-a702-ad992db59ea7",
+      "name": "Salvar Rascunho",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3056, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FIX: Guard contra Supabase retornar array vazio\nconst dadosSupabase = $input.first().json;\nconst doc = Array.isArray(dadosSupabase) ? dadosSupabase[0] : dadosSupabase;\n\nif (!doc || !doc.id) {\n  throw new Error(`Supabase não retornou o documento salvo. Resposta: ${JSON.stringify(dadosSupabase).substring(0, 200)}`);\n}\n\nconst docId = doc.id; // UUID do Supabase\nconst chatId = $(\"Telegram Trigger\").first().json.message?.chat?.id || $(\"Processar Sugestão\").first().json.chat_id;\n\nconst texto = `📋 Nova Sugestão do Agente RAG\\n\\n📌 Título: ${doc.titulo || \"Sem título\"}\\n\\n📁 Categoria: ${doc.categoria || \"N/A\"}\\n📂 Subcategoria: ${doc.subcategoria || \"N/A\"}\\n\\n🏷️ Tags: ${(doc.tags || []).join(\", \") || \"Nenhuma\"}\\n\\n📝 Resumo:\\n${doc.resumo || \"Sem resumo\"}\\n\\n---\\nID: ${docId}`;\n\nconst body = {\n  chat_id: chatId,\n  text: texto,\n  reply_markup: {\n    inline_keyboard: [\n      [\n        { text: \"✅ Aprovar\", callback_data: `approve_${docId}` },\n        { text: \"❌ Rejeitar\", callback_data: `reject_${docId}` }\n      ]\n    ]\n  }\n};\n\nreturn [{\n  json: {\n    doc_id: docId,\n    chat_id: chatId,\n    telegram_body: JSON.stringify(body)\n  }\n}];"
+      },
+      "id": "prep-msg-001",
+      "name": "Preparar Mensagem Aprovação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3280, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.telegram_body }}",
+        "options": {}
+      },
+      "id": "2d12b0dd-6757-499e-bcfc-f1f50dc3abf8",
+      "name": "Enviar para Aprovação",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3504, 80]
+    },
+    {
+      "parameters": {
+        "content": "### 📸 RAG - Captura e Organização\n\n**Trigger:** Imagem no Telegram\n\n**Fluxo:**\n1. Recebe imagem\n2. Vision AI extrai info\n3. Busca mapa do RAG\n4. Agente sugere organização\n5. Envia para aprovação\n6. Salva como rascunho\n\n**Próximo:** Workflow de Aprovação",
+        "height": 324,
+        "width": 320,
+        "color": 6
+      },
+      "id": "443fe8c3-0a32-4a6f-89c7-e6107aca8c55",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -64]
+    },
+    {
+      "parameters": {
+        "jsCode": "const callback = $input.first().json;\nconst callbackData = callback.callback_query?.data || '';\nconst chatId = callback.callback_query?.message?.chat?.id || '';\nconst messageId = callback.callback_query?.message?.message_id || '';\n\nconst isApprove = callbackData.startsWith('approve_');\nconst isReject = callbackData.startsWith('reject_');\nconst docId = callbackData.replace('approve_', '').replace('reject_', '');\n\nreturn [{\n  json: {\n    callback_data: callbackData,\n    action: isApprove ? 'approve' : (isReject ? 'reject' : 'unknown'),\n    doc_id: docId,\n    chat_id: chatId,\n    message_id: messageId,\n    callback_query_id: callback.callback_query?.id\n  }\n}];"
+      },
+      "id": "cb-process-001",
+      "name": "Processar Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [144, 512]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FIX: Responde ao callback imediatamente para evitar o timeout de 10s do Telegram\n// O botão ficaria girando indefinidamente sem isso.\nconst data = $input.first().json;\nconst BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';\n\ntry {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`,\n    body: {\n      callback_query_id: data.callback_query_id,\n      text: data.action === 'approve' ? '⏳ Aprovando documento...' : '⏳ Rejeitando documento...',\n      show_alert: false\n    },\n    json: true\n  });\n} catch (e) {\n  // Callback pode ter expirado (> 10s), ignorar silenciosamente\n}\n\n// Passar dados adiante sem alteração\nreturn [$input.first()];"
+      },
+      "id": "cb-answer-immediate-001",
+      "name": "Responder Callback Imediato",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [368, 512]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [{"id": "cond-approve", "leftValue": "={{ $json.action }}", "rightValue": "approve", "operator": {"type": "string", "operation": "equals"}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cb-if-001",
+      "name": "É Aprovação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [592, 512]
+    },
+    {
+      "parameters": {
+        "url": "=https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/documentos?select=*&id=eq.{{ $json.doc_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "cb-buscar-001",
+      "name": "Buscar Documento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [816, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const docs = $input.first().json;\nconst dadosAnteriores = $(\"Processar Callback\").first().json;\n\nconst doc = Array.isArray(docs) ? docs[0] : docs;\n\nif (!doc) {\n  return [{json: {...dadosAnteriores, erro: \"Documento não encontrado\", documento: null}}];\n}\n\nconst textoParaEmbedding = [doc.titulo || \"\", doc.resumo || \"\", doc.conteudo || \"\"].filter(t => t).join(\"\\n\\n\");\n\nreturn [{\n  json: {\n    ...dadosAnteriores,\n    documento: doc,\n    texto_embedding: textoParaEmbedding,\n    documento_id: doc.id\n  }\n}];"
+      },
+      "id": "cb-prep-001",
+      "name": "Preparar Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.texto_embedding) }}\n}",
+        "options": {}
+      },
+      "id": "cb-embed-001",
+      "name": "Gerar Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1264, 400],
+      "credentials": {
+        "openAiApi": {"id": "3XIAz6ogPLnMZXI1", "name": "OpenAi account"}
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/documentos?id=eq.{{ $(\"Preparar Embedding\").first().json.documento_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"},
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "Prefer", "value": "return=minimal"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"ativo\",\n  \"embedding\": {{ JSON.stringify($json.data[0].embedding) }}\n}",
+        "options": {}
+      },
+      "id": "cb-ativar-001",
+      "name": "Ativar Documento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1488, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/editMessageReplyMarkup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ $('Processar Callback').first().json.chat_id }},\n  \"message_id\": {{ $('Processar Callback').first().json.message_id }},\n  \"reply_markup\": {\"inline_keyboard\": [[{\"text\": \"✅ APROVADO\", \"callback_data\": \"done\"}]]}\n}",
+        "options": {}
+      },
+      "id": "cb-edit-aprov-001",
+      "name": "Editar Msg Aprovado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1712, 400]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/documentos?id=eq.{{ $json.doc_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"},
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "Prefer", "value": "return=minimal"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"status\": \"arquivado\"}",
+        "options": {}
+      },
+      "id": "cb-arquivar-001",
+      "name": "Arquivar Documento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [816, 624]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/editMessageReplyMarkup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ $('Processar Callback').first().json.chat_id }},\n  \"message_id\": {{ $('Processar Callback').first().json.message_id }},\n  \"reply_markup\": {\"inline_keyboard\": [[{\"text\": \"❌ REJEITADO\", \"callback_data\": \"done\"}]]}\n}",
+        "options": {}
+      },
+      "id": "cb-edit-rej-001",
+      "name": "Editar Msg Rejeitado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 624]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $input.first().json;\nconst metricas = dados.vision.dados_numericos || [];\nconst fonte = dados.vision.fonte || 'captura_telegram';\nconst categoria = dados.vision.categoria || 'outro';\n\nif (metricas.length === 0) {\n  return [{ json: { skip: true, ...dados } }];\n}\n\nreturn metricas.map(item => ({\n  json: {\n    metrica: item.metrica,\n    area: item.area || null,\n    valor: parseFloat(String(item.valor).replace(/[^0-9.-]/g, '')) || 0,\n    unidade: item.unidade || 'outro',\n    periodo: item.periodo || new Date().toISOString().slice(0, 10),\n    contexto: item.contexto || null,\n    fonte: fonte,\n    categoria: categoria,\n    dados_originais: dados\n  }\n}));"
+      },
+      "id": "82c5078b-a7dd-40c6-a5b2-ab0ec1f72d06",
+      "name": "Preparar Metricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1936, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/metricas_negocios",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "YOUR_SUPABASE_API_KEY"},
+            {"name": "Authorization", "value": "Bearer YOUR_SUPABASE_API_KEY"},
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "Prefer", "value": "resolution=merge-duplicates"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"metrica\": {{ JSON.stringify($json.metrica) }},\n  \"area\": {{ $json.area ? JSON.stringify($json.area) : 'null' }},\n  \"valor\": {{ $json.valor }},\n  \"unidade\": {{ JSON.stringify($json.unidade) }},\n  \"periodo\": {{ JSON.stringify($json.periodo) }},\n  \"contexto\": {{ $json.contexto ? JSON.stringify($json.contexto) : 'null' }},\n  \"fonte\": {{ JSON.stringify($json.fonte) }},\n  \"categoria\": {{ JSON.stringify($json.categoria) }}\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "3a288418-3735-45d0-9621-bd6d17f59fdb",
+      "name": "Salvar Metricas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 420]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Preparar Metricas').first().json.dados_originais?.chat_id || $json.chat_id }}",
+        "text": "📊 *Dados numéricos salvos!*\n\n{{ $('Preparar Metricas').all().length }} métricas foram armazenadas na base de dados estruturada.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "b04fddbf-5eb0-491a-a6b7-9bb70c78aee0",
+      "name": "Notificar Metricas Salvas",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2384, 420],
+      "webhookId": "d3c27e47-8348-4bb5-8818-e8a8722c9952",
+      "credentials": {
+        "telegramApi": {"id": "7v1279k7IRa1w5Ym", "name": "Telegram account"}
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Tipo de Evento", "type": "main", "index": 0}]]
+    },
+    "Tipo de Evento": {
+      "main": [
+        [{"node": "Processar Callback", "type": "main", "index": 0}],
+        [{"node": "É uma imagem?", "type": "main", "index": 0}]
+      ]
+    },
+    "É uma imagem?": {
+      "main": [
+        [{"node": "Confirmar Recebimento", "type": "main", "index": 0}],
+        [{"node": "Pedir Imagem", "type": "main", "index": 0}]
+      ]
+    },
+    "Confirmar Recebimento": {
+      "main": [[{"node": "Download Imagem", "type": "main", "index": 0}]]
+    },
+    "Download Imagem": {
+      "main": [[{"node": "Preparar Dados", "type": "main", "index": 0}]]
+    },
+    "Preparar Dados": {
+      "main": [[{"node": "Vision AI Extrair", "type": "main", "index": 0}]]
+    },
+    "Vision AI Extrair": {
+      "main": [[{"node": "Processar Vision", "type": "main", "index": 0}]]
+    },
+    "Processar Vision": {
+      "main": [[{"node": "Tipo de Conteudo", "type": "main", "index": 0}]]
+    },
+    "Tipo de Conteudo": {
+      "main": [
+        [
+          {"node": "Buscar Mapa RAG", "type": "main", "index": 0}
+        ],
+        [
+          {"node": "Buscar Mapa RAG", "type": "main", "index": 0},
+          {"node": "Preparar Metricas", "type": "main", "index": 0}
+        ],
+        [
+          {"node": "Buscar Mapa RAG", "type": "main", "index": 0},
+          {"node": "Preparar Metricas", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Buscar Mapa RAG": {
+      "main": [[{"node": "Combinar Dados", "type": "main", "index": 0}]]
+    },
+    "Combinar Dados": {
+      "main": [[{"node": "Agente RAG Expert", "type": "main", "index": 0}]]
+    },
+    "Agente RAG Expert": {
+      "main": [[{"node": "Processar Sugestão", "type": "main", "index": 0}]]
+    },
+    "Processar Sugestão": {
+      "main": [[{"node": "Preparar Body Supabase", "type": "main", "index": 0}]]
+    },
+    "Preparar Body Supabase": {
+      "main": [[{"node": "Salvar Rascunho", "type": "main", "index": 0}]]
+    },
+    "Salvar Rascunho": {
+      "main": [[{"node": "Preparar Mensagem Aprovação", "type": "main", "index": 0}]]
+    },
+    "Preparar Mensagem Aprovação": {
+      "main": [[{"node": "Enviar para Aprovação", "type": "main", "index": 0}]]
+    },
+    "Processar Callback": {
+      "main": [[{"node": "Responder Callback Imediato", "type": "main", "index": 0}]]
+    },
+    "Responder Callback Imediato": {
+      "main": [[{"node": "É Aprovação?", "type": "main", "index": 0}]]
+    },
+    "É Aprovação?": {
+      "main": [
+        [{"node": "Buscar Documento", "type": "main", "index": 0}],
+        [{"node": "Arquivar Documento", "type": "main", "index": 0}]
+      ]
+    },
+    "Buscar Documento": {
+      "main": [[{"node": "Preparar Embedding", "type": "main", "index": 0}]]
+    },
+    "Preparar Embedding": {
+      "main": [[{"node": "Gerar Embedding", "type": "main", "index": 0}]]
+    },
+    "Gerar Embedding": {
+      "main": [[{"node": "Ativar Documento", "type": "main", "index": 0}]]
+    },
+    "Ativar Documento": {
+      "main": [[{"node": "Editar Msg Aprovado", "type": "main", "index": 0}]]
+    },
+    "Arquivar Documento": {
+      "main": [[{"node": "Editar Msg Rejeitado", "type": "main", "index": 0}]]
+    },
+    "Preparar Metricas": {
+      "main": [[{"node": "Salvar Metricas", "type": "main", "index": 0}]]
+    },
+    "Salvar Metricas": {
+      "main": [[{"node": "Notificar Metricas Salvas", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "c74948f8-14d2-4ad4-a568-a15f68858f6b",
+  "meta": {
+    "instanceId": "dfd403df529d77a792fb91b91d5a47ca62511e89545887d0cffed9c5d24f92a0"
+  },
+  "id": "XfesY0wjEWkZbPzZ",
+  "tags": []
+}

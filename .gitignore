@@ -1,0 +1,5 @@
+# Nunca versionar arquivos com credenciais reais
+*.env
+.env*
+secrets.json
+credentials.json
