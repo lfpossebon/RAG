@@ -207,7 +207,6 @@ export default function Home() {
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           ref={fileRef}
           className="hidden"
           onChange={(e) => {
