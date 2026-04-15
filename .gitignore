@@ -3,3 +3,5 @@
 .env*
 secrets.json
 credentials.json
+!.env.example
+!**/.env.example

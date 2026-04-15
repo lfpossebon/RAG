@@ -1,13 +1,28 @@
-# RAG - Workflows n8n
+# RAG - Assistente Pessoal
 
-Repositório de versionamento dos workflows n8n do sistema RAG de captura e organização de conhecimento.
+Sistema pessoal de RAG (Retrieval-Augmented Generation) com duas frentes:
+- **PWA** (`pwa/`): Assistente executivo acessível no celular — pergunta, resposta com citações, ingestão por foto
+- **Workflows n8n** (`workflows/`): Bots Telegram originais (captura e consulta)
+
+Ambos usam a mesma base Supabase pgvector com ~89K chunks.
 
 ## Estrutura
 
 ```
+pwa/                                 # Next.js 14 App Router (deploy Vercel)
 workflows/
-└── RAG_Captura_Organizacao.json   # Captura de imagens via Telegram + Vision AI + Supabase
+└── RAG_Captura_Organizacao.json     # Telegram + Vision AI + Supabase
 ```
+
+## PWA — Stack
+
+- Next.js 14 (App Router)
+- Anthropic API (Claude Sonnet) para chat e Vision
+- OpenAI `text-embedding-3-small` para embeddings
+- Supabase pgvector (`match_documents` RPC)
+- Auth simples por header `x-app-password`
+
+Ver `pwa/.env.example` para as variáveis necessárias.
 
 ## Workflows
 
