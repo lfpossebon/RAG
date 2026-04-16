@@ -141,12 +141,24 @@ export default function Home() {
   }
 
   async function decide(id: string, action: "approve" | "reject") {
-    await fetch("/api/approve", {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify({ id, action }),
-    });
-    loadPending();
+    // Remove da lista imediatamente (feedback instantaneo)
+    setPending((prev) => prev.filter((p) => p.id !== id));
+    try {
+      const r = await fetch("/api/approve", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ id, action }),
+      });
+      if (!r.ok) {
+        const j = await r.json();
+        // Se falhou, recarrega a lista real
+        loadPending();
+        setMsgs((m) => [...m, { role: "assistant", content: `Erro ao ${action === "approve" ? "aprovar" : "rejeitar"}: ${j.error}` }]);
+      }
+    } catch (e: any) {
+      loadPending();
+      setMsgs((m) => [...m, { role: "assistant", content: `Erro: ${e.message}` }]);
+    }
   }
 
   async function briefing() {
