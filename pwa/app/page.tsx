@@ -101,21 +101,39 @@ export default function Home() {
     }
   }
 
-  // Converte qualquer imagem para JPEG base64 via canvas (resolve HEIC do iPhone)
+  // Converte qualquer imagem para JPEG base64 via canvas, redimensiona se grande
+  // Evita erro de pattern na API Anthropic e reduz payload
   function toJpegBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
+        // Redimensiona mantendo proporcao, max 1600px no lado maior
+        const MAX = 1600;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) {
+            h = Math.round((h * MAX) / w);
+            w = MAX;
+          } else {
+            w = Math.round((w * MAX) / h);
+            h = MAX;
+          }
+        }
         const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = w;
+        canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (!ctx) return reject(new Error("canvas error"));
-        ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        resolve(dataUrl.split(",")[1]);
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        const b64 = dataUrl.split(",")[1];
+        if (!b64 || !/^[A-Za-z0-9+/=]+$/.test(b64.slice(0, 100))) {
+          return reject(new Error("base64 invalido"));
+        }
+        resolve(b64);
       };
-      img.onerror = () => reject(new Error("imagem invalida"));
+      img.onerror = () => reject(new Error("imagem invalida (formato nao suportado pelo navegador)"));
       img.src = URL.createObjectURL(file);
     });
   }
