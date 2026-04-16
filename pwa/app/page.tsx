@@ -101,6 +101,25 @@ export default function Home() {
     }
   }
 
+  // Converte qualquer imagem para JPEG base64 via canvas (resolve HEIC do iPhone)
+  function toJpegBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("canvas error"));
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        resolve(dataUrl.split(",")[1]);
+      };
+      img.onerror = () => reject(new Error("imagem invalida"));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   async function uploadMany(files: File[]) {
     setBusy(true);
     setMsgs((m) => [...m, { role: "user", content: `Enviando ${files.length} imagem(ns)...` }]);
@@ -108,16 +127,12 @@ export default function Home() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const base64 = await new Promise<string>((res) => {
-          const r = new FileReader();
-          r.onload = () => res((r.result as string).split(",")[1]);
-          r.readAsDataURL(file);
-        });
+        const base64 = await toJpegBase64(file);
         setMsgs((m) => [...m, { role: "assistant", content: `Processando ${i + 1}/${files.length}: ${file.name}...` }]);
         const r = await fetch("/api/ingest", {
           method: "POST",
           headers: headers(),
-          body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+          body: JSON.stringify({ imageBase64: base64, mimeType: "image/jpeg" }),
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || "erro");
