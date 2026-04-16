@@ -192,26 +192,32 @@ export default function Home() {
         </div>
       </header>
 
-      {showPending && (
-        <div className="border-b border-zinc-800 p-3 space-y-2 max-h-[40vh] overflow-y-auto">
+      {showPending ? (
+        <main className="flex-1 overflow-y-auto p-3 space-y-3 overscroll-contain">
           {pending.length === 0 && <div className="text-sm text-zinc-500">Sem rascunhos.</div>}
           {pending.map((p) => (
-            <div key={p.id} className="rounded bg-zinc-900 p-3 text-sm">
-              <div className="font-medium">{p.titulo}</div>
-              <div className="text-zinc-400">{p.resumo}</div>
-              <div className="mt-2 flex gap-2">
-                <button onClick={() => decide(p.id, "approve")} className="rounded bg-emerald-700 px-2 py-1 text-xs">
+            <div key={p.id} className="rounded-xl bg-zinc-900 p-4 text-sm">
+              <div className="font-semibold text-base">{p.titulo}</div>
+              <div className="mt-1 text-zinc-400">{p.resumo}</div>
+              <div className="mt-1 text-xs text-zinc-500">{p.categoria}</div>
+              <div className="mt-3 flex gap-3">
+                <button
+                  onClick={() => decide(p.id, "approve")}
+                  className="flex-1 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium active:bg-emerald-600"
+                >
                   Aprovar
                 </button>
-                <button onClick={() => decide(p.id, "reject")} className="rounded bg-rose-700 px-2 py-1 text-xs">
+                <button
+                  onClick={() => decide(p.id, "reject")}
+                  className="flex-1 rounded-lg bg-rose-700 px-3 py-2 text-sm font-medium active:bg-rose-600"
+                >
                   Rejeitar
                 </button>
               </div>
             </div>
           ))}
-        </div>
-      )}
-
+        </main>
+      ) : (
       <main className="flex-1 overflow-y-auto p-4 space-y-3 overscroll-contain">
         {msgs.length === 0 && (
           <div className="text-sm text-zinc-500">
@@ -238,6 +244,7 @@ export default function Home() {
         {busy && <div className="text-sm text-zinc-500">pensando...</div>}
         <div ref={endRef} />
       </main>
+      )}
 
       <footer className="flex items-center gap-2 border-t border-zinc-800 p-3">
         <label className="flex cursor-pointer items-center rounded bg-zinc-800 px-3 py-2 text-sm active:bg-zinc-700">
