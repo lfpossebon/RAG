@@ -3,7 +3,7 @@ import { anthropic, embed } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const VISION_PROMPT = `Analise esta imagem e extraia as informações seguindo RIGOROSAMENTE este formato JSON:
 

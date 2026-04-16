@@ -138,22 +138,46 @@ export default function Home() {
     });
   }
 
-  async function uploadMany(files: File[]) {
-    setBusy(true);
-    setMsgs((m) => [...m, { role: "user", content: `Enviando ${files.length} imagem(ns)...` }]);
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+  async function ingestWithRetry(base64: string, attempts = 3): Promise<any> {
+    let lastErr: any;
+    for (let a = 1; a <= attempts; a++) {
       try {
-        const base64 = await toJpegBase64(file);
-        setMsgs((m) => [...m, { role: "assistant", content: `Processando ${i + 1}/${files.length}: ${file.name}...` }]);
         const r = await fetch("/api/ingest", {
           method: "POST",
           headers: headers(),
           body: JSON.stringify({ imageBase64: base64, mimeType: "image/jpeg" }),
         });
         const j = await r.json();
-        if (!r.ok) throw new Error(j.error || "erro");
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        return j;
+      } catch (e: any) {
+        lastErr = e;
+        if (a < attempts) {
+          // espera progressiva antes de tentar de novo
+          await new Promise((res) => setTimeout(res, 1500 * a));
+        }
+      }
+    }
+    throw lastErr;
+  }
+
+  async function uploadMany(files: File[]) {
+    setBusy(true);
+    setMsgs((m) => [...m, { role: "user", content: `Enviando ${files.length} imagem(ns)...` }]);
+
+    let ok = 0;
+    let fail = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const base64 = await toJpegBase64(file);
+        setMsgs((m) => [
+          ...m,
+          { role: "assistant", content: `Processando ${i + 1}/${files.length}: ${file.name}...` },
+        ]);
+        const j = await ingestWithRetry(base64, 3);
+        ok++;
         setMsgs((m) => [
           ...m,
           {
@@ -162,9 +186,18 @@ export default function Home() {
           },
         ]);
       } catch (e: any) {
-        setMsgs((m) => [...m, { role: "assistant", content: `Erro em ${file.name}: ${e.message}` }]);
+        fail++;
+        setMsgs((m) => [
+          ...m,
+          { role: "assistant", content: `Erro em ${file.name} (apos 3 tentativas): ${e.message}` },
+        ]);
       }
     }
+
+    setMsgs((m) => [
+      ...m,
+      { role: "assistant", content: `Lote concluido: ${ok} sucessos, ${fail} falhas.` },
+    ]);
     loadPending();
     setBusy(false);
   }
