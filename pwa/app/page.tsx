@@ -101,35 +101,39 @@ export default function Home() {
     }
   }
 
-  async function upload(file: File) {
+  async function uploadMany(files: File[]) {
     setBusy(true);
-    const base64 = await new Promise<string>((res) => {
-      const r = new FileReader();
-      r.onload = () => res((r.result as string).split(",")[1]);
-      r.readAsDataURL(file);
-    });
-    setMsgs((m) => [...m, { role: "user", content: `Enviando imagem (${file.name})...` }]);
-    try {
-      const r = await fetch("/api/ingest", {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "erro");
-      setMsgs((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: `Rascunho salvo: **${j.parsed.titulo}**\nCategoria: ${j.parsed.categoria}\n\n${j.parsed.resumo}\n\nAprovar na aba Pendentes.`,
-        },
-      ]);
-      loadPending();
-    } catch (e: any) {
-      setMsgs((m) => [...m, { role: "assistant", content: `Erro: ${e.message}` }]);
-    } finally {
-      setBusy(false);
+    setMsgs((m) => [...m, { role: "user", content: `Enviando ${files.length} imagem(ns)...` }]);
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const base64 = await new Promise<string>((res) => {
+          const r = new FileReader();
+          r.onload = () => res((r.result as string).split(",")[1]);
+          r.readAsDataURL(file);
+        });
+        setMsgs((m) => [...m, { role: "assistant", content: `Processando ${i + 1}/${files.length}: ${file.name}...` }]);
+        const r = await fetch("/api/ingest", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "erro");
+        setMsgs((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: `${i + 1}/${files.length} salvo: **${j.parsed.titulo}**\nCategoria: ${j.parsed.categoria}\n${j.parsed.resumo}`,
+          },
+        ]);
+      } catch (e: any) {
+        setMsgs((m) => [...m, { role: "assistant", content: `Erro em ${file.name}: ${e.message}` }]);
+      }
     }
+    loadPending();
+    setBusy(false);
   }
 
   async function loadPending() {
@@ -264,10 +268,11 @@ export default function Home() {
           <input
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) upload(f);
+              const files = e.target.files;
+              if (files && files.length > 0) uploadMany(Array.from(files));
               e.target.value = "";
             }}
           />
