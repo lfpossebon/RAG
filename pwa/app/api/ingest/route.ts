@@ -10,7 +10,9 @@ const VISION_PROMPT = `Analise esta imagem e extraia as informações seguindo R
 {
   "tipo": "qualitativo" | "quantitativo" | "misto",
   "fonte": "nome do documento/relatorio/sistema de origem",
-  "data_referencia": "YYYY-MM ou YYYY-MM-DD se disponivel",
+  "data_referencia": "YYYY-MM-DD (use dia 01 se so tiver mes/ano)",
+  "doc_id": "slug identificador da SERIE do documento (ex: rob_mensal, despesas_mensal, perda_esperada, captacao_bradesco). Use snake_case. MESMO documento recorrente em meses diferentes deve ter MESMO doc_id",
+  "periodicidade": "mensal" | "trimestral" | "semestral" | "anual" | "unico",
   "categoria": "captacao" | "investimentos" | "credito" | "seguros" | "resultado" | "mercado" | "regulatorio" | "estrategia" | "outro",
   "titulo": "titulo curto descritivo",
   "resumo": "resumo executivo de 1-2 frases",
@@ -21,11 +23,13 @@ const VISION_PROMPT = `Analise esta imagem e extraia as informações seguindo R
   "texto_extraido": "transcricao completa do texto visivel"
 }
 
-REGRAS:
+REGRAS CRITICAS:
+- doc_id: abstraia o mes/ano do titulo. Ex: "Relatorio ROB Janeiro 2026" e "Relatorio ROB Fevereiro 2026" devem ter MESMO doc_id "rob_mensal". NAO inclua data no doc_id.
+- data_referencia: identifique o mes/ano que o relatorio se refere, NAO a data em que foi criado. Sempre formato YYYY-MM-DD (use 01 como dia).
 - Se for puro texto/analise: tipo="qualitativo", dados_numericos=[]
 - Se for tabela sem narrativa: tipo="quantitativo", contexto_qualitativo=null
 - Normalize valores (150 milhoes = 150000000), snake_case em metricas, datas ISO
-- Responda APENAS JSON válido, sem markdown.`;
+- Responda APENAS JSON valido, sem markdown.`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -111,6 +115,14 @@ export async function POST(req: NextRequest) {
     console.log("[ingest] embedding OK, dims:", embedding.length);
 
     // 3) Grava como rascunho
+    // Normaliza data_referencia (aceita "YYYY-MM" ou "YYYY-MM-DD")
+    let dataRef: string | null = null;
+    if (parsed.data_referencia && typeof parsed.data_referencia === "string") {
+      const d = parsed.data_referencia.trim();
+      if (/^\d{4}-\d{2}$/.test(d)) dataRef = `${d}-01`;
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(d)) dataRef = d;
+    }
+
     const { data, error } = await supabaseAdmin
       .from("documentos")
       .insert({
@@ -122,6 +134,9 @@ export async function POST(req: NextRequest) {
         metadata: parsed,
         embedding,
         status: "rascunho",
+        doc_id: parsed.doc_id || null,
+        data_referencia: dataRef,
+        tipo_conteudo: parsed.tipo || null,
       })
       .select()
       .single();
