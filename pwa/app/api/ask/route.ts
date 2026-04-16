@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, embed } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import { checkAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { question, history = [] } = await req.json();
   if (!question || typeof question !== "string") {

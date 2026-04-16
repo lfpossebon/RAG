@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import { checkAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
   const { data: docs } = await supabaseAdmin
     .from("documentos")
     .select("titulo,resumo,categoria,created_at")

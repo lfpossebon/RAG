@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, embed } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import { checkAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,7 +28,6 @@ REGRAS:
 - Responda APENAS JSON válido, sem markdown.`;
 
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { imageBase64, mimeType = "image/jpeg", contexto = "" } = await req.json();
   if (!imageBase64) return NextResponse.json({ error: "imageBase64 obrigatório" }, { status: 400 });
