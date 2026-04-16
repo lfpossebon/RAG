@@ -1,10 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: any[] };
 
-/* Renderiza **negrito** e quebras de linha sem dependência extra */
+const STORAGE_KEY = "chat-history";
+
+function loadMsgs(): Msg[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMsgs(msgs: Msg[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-100)));
+  } catch {}
+}
+
+/* Renderiza **negrito** e quebras de linha sem dependencia extra */
 function Md({ text }: { text: string }) {
   const lines = text.split("\n");
   return (
@@ -37,12 +55,24 @@ export default function Home() {
   const [showPending, setShowPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
+  // Carrega historico do localStorage na montagem
   useEffect(() => {
+    setMsgs(loadMsgs());
+  }, []);
+
+  // Salva historico a cada mudanca
+  useEffect(() => {
+    if (msgs.length > 0) saveMsgs(msgs);
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
   function headers() {
     return { "Content-Type": "application/json" };
+  }
+
+  function clearChat() {
+    setMsgs([]);
+    localStorage.removeItem(STORAGE_KEY);
   }
 
   async function send() {
@@ -103,9 +133,11 @@ export default function Home() {
   }
 
   async function loadPending() {
-    const r = await fetch("/api/pending", { headers: headers() });
-    const j = await r.json();
-    if (r.ok) setPending(j.docs || []);
+    try {
+      const r = await fetch("/api/pending", { headers: headers() });
+      const j = await r.json();
+      if (r.ok) setPending(j.docs || []);
+    } catch {}
   }
 
   async function decide(id: string, action: "approve" | "reject") {
@@ -120,19 +152,30 @@ export default function Home() {
   async function briefing() {
     setBusy(true);
     setMsgs((m) => [...m, { role: "user", content: "/briefing" }]);
-    const r = await fetch("/api/briefing", { headers: headers() });
-    const j = await r.json();
-    setMsgs((m) => [
-      ...m,
-      { role: "assistant", content: r.ok ? j.briefing : `Erro: ${j.error}` },
-    ]);
+    try {
+      const r = await fetch("/api/briefing", { headers: headers() });
+      const j = await r.json();
+      setMsgs((m) => [
+        ...m,
+        { role: "assistant", content: r.ok ? j.briefing : `Erro: ${j.error}` },
+      ]);
+    } catch (e: any) {
+      setMsgs((m) => [...m, { role: "assistant", content: `Erro: ${e.message}` }]);
+    }
     setBusy(false);
   }
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-2xl flex-col">
+    <div className="mx-auto flex h-[100dvh] max-w-2xl flex-col overscroll-none">
       <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-        <h1 className="font-semibold">Assistente</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-semibold">Assistente</h1>
+          {msgs.length > 0 && (
+            <button onClick={clearChat} className="text-xs text-zinc-500 hover:text-zinc-300">
+              Limpar
+            </button>
+          )}
+        </div>
         <div className="flex gap-2 text-sm">
           <button onClick={briefing} className="rounded bg-zinc-800 px-2 py-1">
             Briefing
@@ -150,7 +193,7 @@ export default function Home() {
       </header>
 
       {showPending && (
-        <div className="border-b border-zinc-800 p-3 space-y-2">
+        <div className="border-b border-zinc-800 p-3 space-y-2 max-h-[40vh] overflow-y-auto">
           {pending.length === 0 && <div className="text-sm text-zinc-500">Sem rascunhos.</div>}
           {pending.map((p) => (
             <div key={p.id} className="rounded bg-zinc-900 p-3 text-sm">
@@ -169,7 +212,7 @@ export default function Home() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-3">
+      <main className="flex-1 overflow-y-auto p-4 space-y-3 overscroll-contain">
         {msgs.length === 0 && (
           <div className="text-sm text-zinc-500">
             Faca uma pergunta ou envie uma foto pelo botao Arquivo.
