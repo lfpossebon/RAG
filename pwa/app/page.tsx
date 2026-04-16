@@ -178,11 +178,19 @@ export default function Home() {
         ]);
         const j = await ingestWithRetry(base64, 3);
         ok++;
+        let aviso = "";
+        if (j.dedupe?.action === "replaced_rascunho") {
+          aviso = "\n_Rascunho anterior (mesma serie+mes) foi substituido._";
+        } else if (j.dedupe?.action === "duplicate_of_ativo") {
+          aviso = "\n**Atencao:** ja existe documento ATIVO com mesma serie+mes. Revise antes de aprovar.";
+        } else if (j.dedupe?.action === "duplicate_of_arquivo") {
+          aviso = "\n_Existe versao arquivada com mesma serie+mes._";
+        }
         setMsgs((m) => [
           ...m,
           {
             role: "assistant",
-            content: `${i + 1}/${files.length} salvo: **${j.parsed.titulo}**\nCategoria: ${j.parsed.categoria}\n${j.parsed.resumo}`,
+            content: `${i + 1}/${files.length} salvo: **${j.parsed.titulo}**\nCategoria: ${j.parsed.categoria}\n${j.parsed.resumo}${aviso}`,
           },
         ]);
       } catch (e: any) {

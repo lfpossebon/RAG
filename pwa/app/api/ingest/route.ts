@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     console.log("[ingest] embedding OK, dims:", embedding.length);
 
-    // 3) Grava como rascunho
+    // 3) Grava como rascunho (com deduplicacao por doc_id + data_referencia)
     // Normaliza data_referencia (aceita "YYYY-MM" ou "YYYY-MM-DD")
     let dataRef: string | null = null;
     if (parsed.data_referencia && typeof parsed.data_referencia === "string") {
@@ -123,31 +123,85 @@ export async function POST(req: NextRequest) {
       else if (/^\d{4}-\d{2}-\d{2}$/.test(d)) dataRef = d;
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("documentos")
-      .insert({
-        titulo: parsed.titulo || "(sem título)",
-        resumo: parsed.resumo || "",
-        conteudo: textoParaEmbedding,
-        categoria: parsed.categoria || "outro",
-        fonte: parsed.fonte || "upload",
-        metadata: parsed,
-        embedding,
-        status: "rascunho",
-        doc_id: parsed.doc_id || null,
-        data_referencia: dataRef,
-        tipo_conteudo: parsed.tipo || null,
-      })
-      .select()
-      .single();
+    const docId = parsed.doc_id || null;
+
+    // Deduplicacao: se ja existe um doc com mesmo doc_id + data_referencia,
+    // decidir baseado no status do existente
+    let dedupeAction: "none" | "replaced_rascunho" | "duplicate_of_ativo" | "duplicate_of_arquivo" = "none";
+    let existingId: string | null = null;
+
+    if (docId && dataRef) {
+      const { data: existing } = await supabaseAdmin
+        .from("documentos")
+        .select("id, status")
+        .eq("doc_id", docId)
+        .eq("data_referencia", dataRef)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        existingId = existing.id;
+        if (existing.status === "rascunho") dedupeAction = "replaced_rascunho";
+        else if (existing.status === "ativo") dedupeAction = "duplicate_of_ativo";
+        else if (existing.status === "arquivo") dedupeAction = "duplicate_of_arquivo";
+      }
+    }
+
+    const insertPayload: any = {
+      titulo: parsed.titulo || "(sem título)",
+      resumo: parsed.resumo || "",
+      conteudo: textoParaEmbedding,
+      categoria: parsed.categoria || "outro",
+      fonte: parsed.fonte || "upload",
+      metadata: {
+        ...parsed,
+        dedupe: dedupeAction,
+        dedupe_ref_id: existingId,
+      },
+      embedding,
+      status: "rascunho",
+      doc_id: docId,
+      data_referencia: dataRef,
+      tipo_conteudo: parsed.tipo || null,
+    };
+
+    let data: any;
+    let error: any;
+
+    if (dedupeAction === "replaced_rascunho" && existingId) {
+      // Substitui o rascunho existente pela nova leitura
+      const res = await supabaseAdmin
+        .from("documentos")
+        .update(insertPayload)
+        .eq("id", existingId)
+        .select()
+        .single();
+      data = res.data;
+      error = res.error;
+      console.log(`[ingest] dedupe: substituiu rascunho ${existingId}`);
+    } else {
+      const res = await supabaseAdmin.from("documentos").insert(insertPayload).select().single();
+      data = res.data;
+      error = res.error;
+      if (dedupeAction === "duplicate_of_ativo") {
+        console.log(`[ingest] dedupe: criou rascunho, mas ja existe ativo ${existingId}`);
+      } else if (dedupeAction === "duplicate_of_arquivo") {
+        console.log(`[ingest] dedupe: criou rascunho, existe arquivo ${existingId}`);
+      }
+    }
 
     if (error) {
       console.error("[ingest] supabase error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log("[ingest] salvo:", data.id);
-    return NextResponse.json({ documento: data, parsed });
+    console.log("[ingest] salvo:", data.id, "dedupe:", dedupeAction);
+    return NextResponse.json({
+      documento: data,
+      parsed,
+      dedupe: { action: dedupeAction, existing_id: existingId },
+    });
   } catch (e: any) {
     console.error("[ingest] error:", e.message, e.status, JSON.stringify(e.error || {}));
     return NextResponse.json(
