@@ -32,11 +32,36 @@ export async function POST(req: NextRequest) {
     const { imageBase64, mimeType = "image/jpeg", contexto = "" } = await req.json();
     if (!imageBase64) return NextResponse.json({ error: "imageBase64 obrigatório" }, { status: 400 });
 
-    // Garante media_type valido para a API Anthropic
-    const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    const safeType = validTypes.includes(mimeType) ? mimeType : "image/jpeg";
+    // Remove qualquer prefixo data:URL e whitespace, garante so chars validos base64
+    let cleanB64 = String(imageBase64)
+      .replace(/^data:[^;]+;base64,/, "")
+      .replace(/\s+/g, "");
 
-    console.log(`[ingest] base64 length: ${imageBase64.length}, mimeType: ${mimeType} -> ${safeType}`);
+    if (!/^[A-Za-z0-9+/]+=*$/.test(cleanB64)) {
+      const badChar = cleanB64.split("").find((c) => !/[A-Za-z0-9+/=]/.test(c));
+      console.error("[ingest] base64 invalido, char:", badChar?.charCodeAt(0));
+      return NextResponse.json(
+        { error: `base64 contem char invalido (code ${badChar?.charCodeAt(0)})` },
+        { status: 400 }
+      );
+    }
+
+    // Inspeciona magic bytes pra detectar o formato real
+    const firstBytes = Buffer.from(cleanB64.slice(0, 32), "base64");
+    let detectedType = mimeType;
+    if (firstBytes[0] === 0xff && firstBytes[1] === 0xd8) detectedType = "image/jpeg";
+    else if (firstBytes[0] === 0x89 && firstBytes[1] === 0x50) detectedType = "image/png";
+    else if (firstBytes[0] === 0x47 && firstBytes[1] === 0x49) detectedType = "image/gif";
+    else if (firstBytes[0] === 0x52 && firstBytes[1] === 0x49) detectedType = "image/webp";
+
+    const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    const safeType = validTypes.includes(detectedType) ? detectedType : "image/jpeg";
+
+    console.log(
+      `[ingest] base64 len: ${cleanB64.length}, magic: ${firstBytes
+        .slice(0, 4)
+        .toString("hex")}, claimed: ${mimeType}, detected: ${detectedType}, using: ${safeType}`
+    );
 
     // 1) Vision via Claude
     const vision = await anthropic.messages.create({
@@ -46,7 +71,7 @@ export async function POST(req: NextRequest) {
         {
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: safeType, data: imageBase64 } },
+            { type: "image", source: { type: "base64", media_type: safeType, data: cleanB64 } },
             { type: "text", text: `${VISION_PROMPT}\n\nContexto do usuário: ${contexto || "Nenhum"}` },
           ],
         },
