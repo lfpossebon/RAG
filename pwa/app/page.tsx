@@ -337,12 +337,28 @@ export default function Home() {
       )}
 
       <footer className="flex items-center gap-2 border-t border-zinc-800 p-3">
+        {/* Galeria — sem capture, abre biblioteca no iOS */}
         <label className="flex cursor-pointer items-center rounded bg-zinc-800 px-3 py-2 text-sm active:bg-zinc-700">
-          Arquivo
+          Galeria
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) uploadMany(Array.from(files));
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {/* Camera — com capture, abre camera diretamente */}
+        <label className="flex cursor-pointer items-center rounded bg-zinc-800 px-3 py-2 text-sm active:bg-zinc-700">
+          Foto
           <input
             type="file"
             accept="image/*"
-            multiple
+            capture="environment"
             className="hidden"
             onChange={(e) => {
               const files = e.target.files;
